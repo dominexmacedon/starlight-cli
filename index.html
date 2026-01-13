@@ -2,90 +2,109 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Upload Folder to GitHub</title>
+<title>Upload Folders to GitHub</title>
 <style>
-  body { font-family: sans-serif; margin: 2rem; }
-  #fileList { margin-top: 1rem; }
-  li { margin: 0.3rem 0; }
-  button { margin-left: 1rem; }
+  body { font-family: system-ui; margin: 2rem; }
+  ul { margin-top: 1rem; }
+  li { font-size: 0.9rem; }
+  button { margin-top: 1rem; }
 </style>
 </head>
 <body>
-<h1>Upload Folder to GitHub</h1>
 
-<p>Select a folder:</p>
-<input type="file" id="folderInput" webkitdirectory directory multiple>
+<h1>Upload Folders to GitHub</h1>
+
+<p>Select a folder (you can select multiple folders one-by-one):</p>
+<input type="file" id="folderInput" webkitdirectory multiple>
 
 <ul id="fileList"></ul>
 
 <button id="pushBtn">Push to GitHub</button>
 
 <script>
+const username = 'dominexmacedon';
+const repo = 'starlight-cli';
+const branch = 'main';
+
 let files = [];
-let repo = 'starlight-cli';
-let username = 'dominexmacedon';
-let branch = 'main';
-let token = ''; // prompt later for security
 
 const folderInput = document.getElementById('folderInput');
 const fileList = document.getElementById('fileList');
 const pushBtn = document.getElementById('pushBtn');
 
 folderInput.addEventListener('change', (e) => {
-    files = Array.from(e.target.files);
-    fileList.innerHTML = '';
-    files.forEach(f => {
-        const li = document.createElement('li');
-        li.textContent = f.webkitRelativePath;
-        fileList.appendChild(li);
-    });
+  const newFiles = Array.from(e.target.files);
+  files.push(...newFiles);
+
+  fileList.innerHTML = '';
+  files.forEach(f => {
+    const li = document.createElement('li');
+    li.textContent = f.webkitRelativePath;
+    fileList.appendChild(li);
+  });
 });
 
-async function pushFile(path, contentBase64) {
-    const url = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
-    
-    // Check if file exists to get sha
-    const res = await fetch(url, {
-        headers: { 'Authorization': `token ${token}` }
-    });
-    let sha;
-    if (res.status === 200) {
-        const data = await res.json();
-        sha = data.sha;
+async function pushFile(token, path, contentBase64) {
+  const url = `https://api.github.com/repos/${username}/${repo}/contents/${path}`;
+
+  let sha = null;
+
+  // Check if file exists
+  const check = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-GitHub-Api-Version': '2022-11-28'
     }
+  });
 
-    const body = {
-        message: `Upload ${path}`,
-        content: contentBase64,
-        branch: branch
-    };
-    if (sha) body.sha = sha;
+  if (check.status === 200) {
+    const data = await check.json();
+    sha = data.sha;
+  }
 
-    const resp = await fetch(url, {
-        method: 'PUT',
-        headers: {
-            'Authorization': `token ${token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-    });
+  const body = {
+    message: `Upload ${path}`,
+    content: contentBase64,
+    branch
+  };
+  if (sha) body.sha = sha;
 
-    return await resp.json();
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || 'Upload failed');
+  }
+
+  return res.json();
 }
 
 pushBtn.addEventListener('click', async () => {
-    if (files.length === 0) return alert('No files selected');
-    token = prompt('Enter your GitHub Personal Access Token:');
-    if (!token) return alert('Token required');
+  if (files.length === 0) return alert('No files selected');
 
+  const token = prompt('Enter GitHub Personal Access Token:');
+  if (!token) return alert('Token required');
+
+  try {
     for (const file of files) {
-        const text = await file.text();
-        const contentBase64 = btoa(unescape(encodeURIComponent(text)));
-        const result = await pushFile(file.webkitRelativePath, contentBase64);
-        console.log(result);
+      const text = await file.text();
+      const base64 = btoa(unescape(encodeURIComponent(text)));
+      await pushFile(token, file.webkitRelativePath, base64);
     }
-    alert('Upload complete!');
+    alert('All files uploaded successfully!');
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
 });
 </script>
+
 </body>
 </html>
